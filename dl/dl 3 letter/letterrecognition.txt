@@ -1,0 +1,162 @@
+!pip uninstall -y tensorflow
+
+
+!pip install tensorflow==2.15.0
+
+
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.utils import to_categorical
+
+
+
+
+# Load data
+
+columns = ['letter'] + [f'feature_{i}' for i in range(1,17)]
+
+df = pd.read_csv("letter-recognition.csv")
+
+print(df.head())
+
+
+
+
+
+X = df.iloc[:, 1:].values
+y = df.iloc[:, 0].values
+
+
+
+
+le = LabelEncoder()
+y_encoded = le.fit_transform(y)
+
+
+
+y_categorical = to_categorical(y_encoded)
+
+
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y_categorical, test_size=0.2, random_state=42
+)
+
+
+
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Input
+
+model = Sequential()
+
+model.add(Input(shape=(16,)))   # ✅ Correct way
+model.add(Dense(128, activation='relu'))
+model.add(Dense(64, activation='relu'))
+model.add(Dense(26, activation='softmax'))
+
+
+
+
+model.compile(
+    optimizer='adam',
+    loss='categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+
+
+
+
+history = model.fit(
+    X_train, y_train,
+    epochs=30,
+    batch_size=32,
+    validation_split=0.2
+)
+
+
+
+
+loss, accuracy = model.evaluate(X_test, y_test)
+print("Test Accuracy:", accuracy)
+
+
+
+
+
+pred = model.predict(X_test)
+
+# Convert probabilities → class index
+pred_classes = np.argmax(pred, axis=1)
+
+# Convert back to letters
+pred_letters = le.inverse_transform(pred_classes)
+
+print(pred_letters[:10])
+
+
+
+
+
+
+STEP 1 — LOAD DATA
+CSV file → 20,000 rows
+Each row = 1 letter + 16 measurements
+['letter', 'feature_1', ..., 'feature_16']
+
+STEP 2 — PREPARE DATA
+X = 16 feature columns    → what letter looks like
+y = letter column         → correct answer
+
+y: letters → numbers      (LabelEncoder)
+   A→0, B→1 ... Z→25
+
+y: numbers → one-hot      (to_categorical)
+   T(19) → [0,0,...,1,...,0]  26 numbers
+
+X: scale features         (StandardScaler)
+   all features → mean=0, std=1
+
+STEP 3 — SPLIT DATA
+20,000 samples
+→ 80% = 16,000 training
+→ 20% =  4,000 test
+
+Inside model.fit():
+training → 80% actual train (12,800)
+         → 20% validation   (3,200)
+
+STEP 4 — BUILD MODEL
+Input (16 features)
+→ Dense(128) + ReLU
+→ Dense(64)  + ReLU
+→ Dense(26)  + Softmax  ← 26 outputs for 26 letters
+
+STEP 5 — COMPILE
+Loss      = categorical_crossentropy
+Metrics   = accuracy
+Optimizer = adam
+
+STEP 6 — TRAIN
+epochs         = 30
+batch_size     = 32
+validation_split = 0.2
+
+STEP 7 — EVALUATE
+model.evaluate() → test accuracy (~96%)
+
+STEP 8 — PREDICT
+model.predict()     → 26 probabilities per letter
+np.argmax()         → pick highest probability
+le.inverse_transform() → convert back to A-Z

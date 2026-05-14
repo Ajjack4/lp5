@@ -1,0 +1,233 @@
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+
+
+
+def load_boston_housing_data():
+    
+    # Load CSV file (make sure file is in same folder)
+    df = pd.read_csv("HousingData.csv")
+
+    # Handle missing values (important for this dataset)
+    df = df.fillna(df.mean())
+
+    # Split features and target
+    X = df.iloc[:, :-1].values   # all columns except last
+    y = df.iloc[:, -1].values    # last column (MEDV)
+
+    # Normalize data
+    scaler_X = StandardScaler()
+    scaler_y = StandardScaler()
+
+    X = scaler_X.fit_transform(X)
+    y = scaler_y.fit_transform(y.reshape(-1, 1)).flatten()
+
+    return X, y, scaler_y
+
+# Load data
+X, y, scaler_y = load_boston_housing_data()
+
+
+
+
+
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+X_train, X_val, y_train, y_val = train_test_split(
+    X_train, y_train, test_size=0.2, random_state=42
+)
+
+# Convert to float32 (important)
+X_train = X_train.astype('float32')
+X_val = X_val.astype('float32')
+X_test = X_test.astype('float32')
+
+y_train = y_train.astype('float32')
+y_val = y_val.astype('float32')
+y_test = y_test.astype('float32')
+
+
+
+
+
+
+
+batch_size = 32
+
+train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train)) \
+    .shuffle(buffer_size=len(X_train)) \
+    .batch(batch_size) \
+    .prefetch(tf.data.AUTOTUNE)
+
+val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val)) \
+    .batch(batch_size) \
+    .prefetch(tf.data.AUTOTUNE)
+
+test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)) \
+    .batch(batch_size) \
+    .prefetch(tf.data.AUTOTUNE)
+
+
+
+
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(X_train.shape[1],)),  # dynamic input
+
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.BatchNormalization(),
+
+    tf.keras.layers.Dense(32, activation='relu'),
+    tf.keras.layers.BatchNormalization(),
+
+    tf.keras.layers.Dense(16, activation='relu'),
+
+    tf.keras.layers.Dense(1)  # Linear output (regression)
+])
+
+# Compile model
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+    loss='mse',
+    metrics=['mae']
+)
+
+
+
+
+
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=20,
+        restore_best_weights=True,
+        verbose=1
+    ),
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.2,
+        patience=10,
+        min_lr=0.00001,
+        verbose=1
+    )
+]
+
+
+
+
+
+history = model.fit(
+    train_dataset,
+    epochs=200,
+    validation_data=val_dataset,
+    callbacks=callbacks,
+    verbose=1
+)
+
+
+
+
+
+test_loss, test_mae = model.evaluate(test_dataset)
+
+print("\nTest Loss (MSE):", test_loss)
+print("Test MAE:", test_mae)
+
+
+
+
+
+predictions = model.predict(test_dataset)
+
+# Convert back to original scale
+predictions_rescaled = scaler_y.inverse_transform(predictions)
+y_test_rescaled = scaler_y.inverse_transform(y_test.reshape(-1, 1))
+
+print("\nSample Predictions:")
+for i in range(5):
+    print(f"Predicted: {predictions_rescaled[i][0]:.2f}, Actual: {y_test_rescaled[i][0]:.2f}")
+
+
+
+
+
+
+
+plt.figure()
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss (MSE)')
+plt.title('Training vs Validation Loss')
+plt.legend()
+plt.show()
+
+
+
+
+
+
+plt.figure()
+plt.plot(history.history['mae'], label='Training MAE')
+plt.plot(history.history['val_mae'], label='Validation MAE')
+plt.xlabel('Epochs')
+plt.ylabel('MAE')
+plt.title('Training vs Validation MAE')
+plt.legend()
+plt.show()
+
+
+
+
+
+Step 1 - LOAD DATA
+Built-in Keras IMDB dataset
+50,000 movie reviews already labeled
+0 = negative / 1 = positive
+
+Step 2 - PREPARE DATA
+num_words = 10,000 (top words only)
+Words converted to numbers
+pad_sequences → all reviews = 200 words
+
+Step 3 - SPLIT DATA
+25,000 training reviews:
+→ first 10,000 → Validation
+→ last  15,000 → Training
+25,000 separate Test reviews
+
+Step 4 - BUILD MODEL
+Input(200 words)
+→ Embedding(128)     ← words to meaning vectors
+→ Conv1D(64)         ← find local word patterns
+→ MaxPooling1D       ← shrink data
+→ LSTM(64)           ← understand word order
+→ LSTM(32)           ← summarize sequence
+→ Dense(64) + Dropout(0.5)
+→ Dense(32) + Dropout(0.3)
+→ Dense(1) + Sigmoid ← probability 0 to 1
+
+Step 5 - COMPILE
+Loss     = Binary Crossentropy
+Metrics  = Accuracy
+Optimizer= Adam
+
+Step 6 - TRAIN
+Same as Project 1
+Epochs + EarlyStopping + ReduceLROnPlateau
+
+Step 7 - EVALUATE
+Accuracy score
+Confusion Matrix →
+  TP / TN / FP / FN
+Precision, Recall, F1 Score
+
+
